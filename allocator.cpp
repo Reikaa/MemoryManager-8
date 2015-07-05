@@ -169,6 +169,7 @@ void* Allocator::init(uint32_t size)
     }
     PoolHeader* poolHeader = (PoolHeader*)memory;
     poolHeader->next = NULL;
+    poolHeader->prev = NULL;
     poolHeader->poolSize = size;
 
     char* poolStart = (char*)memory;
@@ -203,4 +204,42 @@ void* Allocator::Allocate(uint32_t size)
     }
 
     return getRightBlock(size);
+}
+
+Allocator::ChunkHeader* Allocator::coalesce(ChunkHeader* left, ChunkHeader* right)
+{
+    uint32_t newSize = left->size + right->size;
+    createHeader((void*)left, newSize, left->prevSize, right->nextSize);
+    return left;
+}
+
+void Allocator::Free(void* ptr)
+{
+    ChunkHeader* header = (ChunkHeader*)((char*)ptr - sizeof(ChunkHeader));
+    ChunkHeader* prev = NULL;
+    ChunkHeader* next = NULL;
+
+    if(header->nextSize > 0) {
+        next = (ChunkHeader*)((char*)ptr + header->nextSize);
+    }
+    if(header->prevSize > 0) {
+        prev = (ChunkHeader*)((char*)ptr - header->prevSize - sizeof(ChunkHeader));
+    }
+
+    ChunkHeader* tempHeader = header;
+    if(prev && !isUsed(prev)) {
+        tempHeader = coalesce(prev, header);
+    }
+    if(next && !isUsed(next)) {
+        tempHeader = coalesce(tempHeader, next);
+    }
+
+    setUnused(tempHeader);
+    if(tempHeader->nextSize == 0 && tempHeader->prevSize == 0) { ///no allocated chunks on this pool
+        PoolHeader* poolHeader = (PoolHeader*)((char*)tempHeader - sizeof(ChunkHeader));
+        PoolHeader* prevPool = poolHeader->prev;
+        if(prevPool)
+            prevPool->next = NULL;
+        free(poolHeader);
+    }
 }

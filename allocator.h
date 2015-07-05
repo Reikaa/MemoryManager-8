@@ -5,21 +5,16 @@
 #include <memory>
 #include <cstddef>
 
+
 class Allocator
 {
 public:
     void* Allocate(uint32_t size);
-    void Free();
+    void Free(void* ptr);
 
     Allocator();
 
 private:
-    struct Deleter {
-        void operator()(void* memory) {
-            free(memory);
-        }
-    };
-
     struct ChunkHeader {
         uint32_t size;
         uint32_t prevSize;
@@ -30,6 +25,19 @@ private:
         PoolHeader* next;
         PoolHeader* prev;
         uint32_t poolSize;
+    };
+
+    struct Deleter {
+        void operator()(void* memory) {
+            Delete((PoolHeader*)memory);
+        }
+        void Delete(PoolHeader* header) {
+            if(!header) {
+                return;
+            }
+            Delete(header->next);
+            free(header);
+        }
     };
 
     void* init(uint32_t size = Allocator::defaultSize);
@@ -52,6 +60,8 @@ private:
     void* allocateNewChunk(uint32_t size);
     uint32_t speciallyAllocatedChunkSize(uint32_t) const;
 
+    ChunkHeader* coalesce(ChunkHeader* left, ChunkHeader* right);
+
     static const uint32_t defaultSize = 1 << 16; /// 64KB;
     static const int leftMostBit = sizeof(uint32_t) * 8;
     static const int bitUsedShift = leftMostBit - 1;
@@ -62,6 +72,7 @@ private:
     bool initialiazed;
     std::unique_ptr<void, Deleter> memoryPool;
 };
+
 
 
 #endif // ALLOCATOR_H_INCLUDED
